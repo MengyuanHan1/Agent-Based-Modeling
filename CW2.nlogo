@@ -20,6 +20,7 @@ turtles-own [
   direction      ; 个体朝向
   speed          ; 个体当前速度
   collided?      ; 标记个体是否发生过碰撞
+  affected?      ; 标记个体是否受到死亡个体的影响
 ]
 
 to setup
@@ -38,10 +39,11 @@ to setup
     set status "normal"
     set vision vision-radius
     set direction random-direction
-    set speed initial-speed ; 设置初始速度
+    set speed initial-speed
     setxy random-xcor random-ycor
-    set vision-angle 120  ; 设置视野角度为120度
+    set vision-angle 120
     set collided? false
+    set affected? false
 
     ; 确保个体在圆形广场内
     while [distancexy 0 0 > arena-radius] [
@@ -88,86 +90,27 @@ to go
     ]
   ]
 
-  ; 死亡个体影响范围内的个体
-  ask turtles with [status = "dead"] [
-    ask other turtles in-radius effect-radius [
-      if status != "dead" [set status "panic"]
-    ]
+  ; 状态决策阶段
+  ask turtles [
+    update-status
   ]
 
+  ; 行为执行阶段
   ask turtles [
-    ; 更新视野
-    let visible-turtles other turtles in-cone vision-radius vision-angle
-
-
-    if status = "normal" [
-      ; 正常状态下的行为
-      if any? visible-turtles with [status = "panic" or status = "dead"] [
-        set status "panic"
-      ]
-      if status = "normal" [
-        ; 随机漫步
-        rt random 90
-        lt random 90
-        fd initial-speed
-      ]
-    ]
-
-
-    if status = "panic" [
-      ; 恐慌状态下的行为
-      set direction nearest-exit
-      if any? visible-turtles with [status = "dead"] in-cone vision vision-angle [
-        let dead-turtle one-of visible-turtles with [status = "dead"]
-        let away-direction atan ([ycor] of dead-turtle - ycor) ([xcor] of dead-turtle - xcor)
-        set away-direction away-direction + 180
-        set direction away-direction
-
-        ask other turtles in-radius 1 with [status = "normal"] [
-          if not collided? [
-            set status "injured"
-            set collided? true
-          ]
-        ]
-      ]
-      update-speed
-      fd speed
-    ]
-    if status = "injured" [
-      ; 受伤状态下的行为
-      set speed 0
-      if ticks mod pause-time = 0 [
-        set status "panic"
-        fd initial-speed
-      ]
-    ]
-    if status = "dead" [
-      ; 死亡状态下的行为
-      set speed 0
-    ]
+    execute-behavior
+  ]
 
     ; 更新位置
-    if status != "dead" [
-      check-boundary
-    ]
-
-    if status = "safe" [
-      ;安全状态下的行为
-      set speed 0
-    ]
+  ask turtles [
+    check-boundary
+  ]
 
     ; 更新状态
-    if status = "panic" or status = "injured" [
+  ask turtles [
+    if not affected? and (status = "panic" or status = "injured") [
       if any? other turtles in-radius 1 [set status "injured"]
     ]
   ]
-
-  ; 统计当前时间步长内的个体状态分布
-  let normal-count count turtles with [status = "normal"]
-  let panic-count count turtles with [status = "panic"]
-  let injured-count count turtles with [status = "injured"]
-  let dead-count count turtles with [status = "dead"]
-  let safe-count count turtles with [status = "safe"]
 
   ; 绘制当前状态
   draw-turtles
@@ -175,32 +118,99 @@ to go
   tick
 end
 
-; 其他辅助函数
+; 更新个体状态
+to update-status
+  let visible-turtles other turtles in-cone vision-radius vision-angle
 
-; 随机生成一个方向
-to-report random-direction
-  report random 360
+  if status = "normal" [
+    ; 正常状态下的决策
+    let nearest-panic-turtle min-one-of visible-turtles with [status = "panic"] [distance myself]
+    if nearest-panic-turtle != nobody [set status "panic"]
+  ]
+
+  if status = "panic" [
+    ; 恐慌状态下的决策
+    ifelse any? turtles with [status = "dead"] in-radius effect-radius [
+      set affected? true
+    ] [
+      set affected? false
+    ]
+    if any? other turtles in-radius 1 with [status != "dead"] [
+      if not collided? [set collided? true]
+    ]
+  ]
+
+  if status = "injured" [
+    ; 受伤状态下的决策
+    if ticks mod pause-time = 0 [set status "panic"]
+  ]
 end
 
+; 执行状态对应的行为
+to execute-behavior
+  if status = "normal" [
+    ; 正常状态下的行为
+    rt random 90
+    lt random 90
+    fd speed
+  ]
+
+  if status = "panic" [
+    ; 恐慌状态下的行为
+    ifelse affected? [
+      away-direction one-of turtles with [status = "dead"]
+    ] [
+      nearest-exit
+    ]
+    ; 更新位置
+    check-boundary
+    update-speed
+    fd speed
+  ]
+
+  if status = "injured" [
+    ; 受伤状态下的行为
+    set speed 0
+  ]
+end
+
+; 其他辅助函数保持不变
+
+
+
+
+
+; 其他辅助函数
+
+
 ; 计算离个体最近的广场边界的方向
-to-report nearest-exit
+to nearest-exit
   let center-dx xcor
   let center-dy ycor
   let dist-to-boundary arena-radius - sqrt(center-dx ^ 2 + center-dy ^ 2)
   let boundary-x center-dx * (arena-radius / sqrt(center-dx ^ 2 + center-dy ^ 2))
   let boundary-y center-dy * (arena-radius / sqrt(center-dx ^ 2 + center-dy ^ 2))
-  report towardsxy boundary-x boundary-y
+  face patch boundary-x boundary-y
 end
 
-; 判断个体是否在死亡个体的影响范围内
-to-report in-effect-range? [a-turtle]
-  report distance a-turtle <= effect-radius
+; 计算远离指定个体的方向
+to away-direction [a-turtle]
+  ifelse (xcor = [xcor] of a-turtle) and (ycor = [ycor] of a-turtle) [
+    rt random 360  ; 如果位置完全相同,随机选择一个方向
+  ] [
+    let delta-x xcor - [xcor] of a-turtle
+    let delta-y ycor - [ycor] of a-turtle
+    let adjusted-direction (atan delta-y delta-x + 180) mod 360  ; 计算向相反方向的角度
+    set heading adjusted-direction
+  ]
 end
+
+
 
 ; 根据视野范围内与其他个体的距离调整速度
 to update-speed
   let visible-turtles other turtles in-cone vision-radius vision-angle
-  ifelse any? visible-turtles with [distance myself < distance-threshold] [
+  ifelse any? visible-turtles with [distance myself <= distance-threshold] [
     set speed initial-speed * (1 - speed-decrease / 100)
   ] [
     set speed initial-speed * (1 + panic-speed-increase / 100)
@@ -222,18 +232,19 @@ to check-boundary
 end
 
 
-
-
-
+; 随机生成一个方向
+to-report random-direction
+  report random 360
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 213
 10
-650
-448
+709
+507
 -1
 -1
-13.0
+8.0
 1
 10
 1
@@ -243,10 +254,10 @@ GRAPHICS-WINDOW
 0
 0
 1
--16
-16
--16
-16
+-30
+30
+-30
+30
 0
 0
 1
@@ -294,10 +305,10 @@ SLIDER
 119
 num-turtles
 num-turtles
-0
-100
-50.0
-1
+10
+500
+80.0
+10
 1
 NIL
 HORIZONTAL
@@ -311,7 +322,7 @@ arena-radius
 arena-radius
 0
 100
-16.0
+28.0
 1
 1
 NIL
@@ -326,7 +337,7 @@ vision-radius
 vision-radius
 0
 100
-3.0
+6.0
 1
 1
 NIL
@@ -341,7 +352,7 @@ initial-speed
 initial-speed
 0
 100
-2.0
+1.0
 1
 1
 NIL
@@ -431,11 +442,32 @@ effect-radius
 effect-radius
 0
 100
-6.0
+18.0
 1
 1
 NIL
 HORIZONTAL
+
+PLOT
+730
+65
+1161
+262
+Population of Different Status
+ticks
+Population
+0.0
+50.0
+0.0
+50.0
+true
+true
+"" ""
+PENS
+"Normal" 1.0 0 -7500403 true "" "plot count turtles with [status = \"normal\"]"
+"Panic" 1.0 0 -2674135 true "" "plot count turtles with [status = \"panic\""
+"Injured" 1.0 0 -955883 true "" "plot count turtles with [status = \"injured\"]"
+"Safe" 1.0 0 -13840069 true "" "plot count turtles with [status = \"safe\"]"
 
 @#$#@#$#@
 ## WHAT IS IT?
