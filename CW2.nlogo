@@ -13,6 +13,10 @@ globals [
   vision-angle   ; 个体视野角度大小
 ]
 
+patches-own [
+  affected?  ; 标记patch是否受到死亡个体的影响
+]
+
 turtles-own [
   ; 个体属性
   vision         ; 视野长度
@@ -20,7 +24,6 @@ turtles-own [
   direction      ; 个体朝向
   speed          ; 个体当前速度
   collided?      ; 标记个体是否发生过碰撞
-  affected?      ; 标记个体是否受到死亡个体的影响
 ]
 
 to setup
@@ -30,6 +33,11 @@ to setup
   ; 初始化环境
   ask patches [
     set pcolor white
+  ]
+
+    ; 初始化affected-patches
+  ask patches [
+    set affected? false
   ]
 
   ; 创建个体
@@ -105,12 +113,28 @@ to go
     check-boundary
   ]
 
-    ; 更新状态
-  ask turtles [
-    if not affected? and (status = "panic" or status = "injured") [
-      if any? other turtles in-radius 1 [set status "injured"]
+    ; 更新affected-patches
+  ask patches [
+    set affected? false
+  ]
+
+  ask turtles with [status = "dead"] [
+    ask patches in-radius effect-radius [
+      set affected? true
     ]
   ]
+
+ask turtles [
+if status != "safe" and not affected? and (status = "panic" or status = "injured") [
+if any? other turtles with [status != "safe"] in-radius 1 [
+set status "injured"
+; 如果个体已经到达边界,直接将状态设置为"safe"
+if distancexy 0 0 >= arena-radius [
+set status "safe"
+]
+]
+]
+]
 
   ; 绘制当前状态
   draw-turtles
@@ -124,26 +148,36 @@ to update-status
 
   if status = "normal" [
     ; 正常状态下的决策
+    ifelse any? patches in-radius vision-radius with [affected?] [
+      set status "panic"
+    ] [
     let nearest-panic-turtle min-one-of visible-turtles with [status = "panic"] [distance myself]
     if nearest-panic-turtle != nobody [set status "panic"]
+  ]
   ]
 
   if status = "panic" [
     ; 恐慌状态下的决策
-    ifelse any? turtles with [status = "dead"] in-radius effect-radius [
+    ifelse any? patches in-radius vision-radius with [affected?] [
       set affected? true
     ] [
       set affected? false
     ]
-    if any? other turtles in-radius 1 with [status != "dead"] [
+    if status != "safe" and any? other turtles in-radius 1 with [status != "dead"] [
       if not collided? [set collided? true]
     ]
   ]
 
-  if status = "injured" [
-    ; 受伤状态下的决策
-    if ticks mod pause-time = 0 [set status "panic"]
-  ]
+if status = "injured" [
+; 受伤状态下的决策
+if ticks mod pause-time = 0 and status != "safe" [
+set status "panic"
+; 如果个体已经到达边界,直接将状态设置为"safe"
+if distancexy 0 0 >= arena-radius [
+set status "safe"
+]
+]
+]
 end
 
 ; 执行状态对应的行为
@@ -162,6 +196,7 @@ to execute-behavior
     ] [
       nearest-exit
     ]
+
     ; 更新位置
     check-boundary
     update-speed
@@ -171,7 +206,15 @@ to execute-behavior
   if status = "injured" [
     ; 受伤状态下的行为
     set speed 0
-  ]
+]
+  ; 如果个体已经到达安全状态,不再执行后续的行为
+if status != "safe" and status != "dead" [
+; 更新位置
+check-boundary
+update-speed
+fd speed
+]
+
 end
 
 ; 其他辅助函数保持不变
@@ -219,8 +262,8 @@ end
 
 ; 检查个体是否到达边界以外
 to check-boundary
-  if distancexy 0 0 > arena-radius [
-    if status = "panic" [
+  if distancexy 0 0 >= arena-radius [
+    if status != "normal" [
       set status "safe"
     ]
     if status = "normal" [
