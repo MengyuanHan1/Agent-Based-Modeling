@@ -186,6 +186,7 @@ to execute-behavior
     ; 正常状态下的行为
     rt random 90
     lt random 90
+    check-boundary
     fd speed
   ]
 
@@ -207,6 +208,7 @@ to execute-behavior
     ; 受伤状态下的行为
     set speed 0
 ]
+
   ; 如果个体已经到达安全状态,不再执行后续的行为
 if status != "safe" and status != "dead" [
 ; 更新位置
@@ -214,8 +216,8 @@ check-boundary
 update-speed
 fd speed
 ]
-
 end
+
 
 ; 其他辅助函数保持不变
 
@@ -260,16 +262,12 @@ to update-speed
   ]
 end
 
-; 检查个体是否到达边界以外
 to check-boundary
   if distancexy 0 0 >= arena-radius [
+    set heading (heading + 180) mod 360
+    fd (distancexy 0 0 - arena-radius)
     if status != "normal" [
       set status "safe"
-    ]
-    if status = "normal" [
-      ; 如果是普通状态的个体,则反弹回来
-      set heading (heading + 180) mod 360
-      fd initial-speed
     ]
   ]
 end
@@ -350,7 +348,7 @@ num-turtles
 num-turtles
 10
 500
-80.0
+40.0
 10
 1
 NIL
@@ -425,7 +423,7 @@ speed-decrease
 speed-decrease
 0
 100
-50.0
+2.0
 1
 1
 NIL
@@ -455,7 +453,7 @@ pause-time
 pause-time
 0
 100
-6.0
+4.0
 1
 1
 NIL
