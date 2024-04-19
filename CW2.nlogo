@@ -1,46 +1,47 @@
 globals [
-  ; 全局变量
-  ;num-turtles          ; 个体数量 N
-  ;arena-radius         ; 广场半径 R_square
-  ;vision-radius        ; 个体视野半径 R_vision
-  ;initial-speed        ; 初始速度 v_init
-  ;panic-speed-increase ; 恐慌状态下速度提高百分比 p_speed_up
-  ;speed-decrease       ; 速度降低百分比 p_speed_down
-  ;distance-threshold   ; 个体间距离阈值 d_threshold
-  ;pause-time           ; 碰撞后暂停时间 t_pause
-  ;event-time           ; 事件发生时间 t_event
-  ;effect-radius        ; 死亡个体影响范围 R_effect
-  vision-angle   ; 个体视野角度大小
+  ; global variables
+  ;num-turtles          ; Number of individuals
+  ;arena-radius         ; Radius of the arena
+  ;vision-radius        ; Individual's vision radius
+  ;initial-speed        ; Initial speed
+  ;panic-speed-increase ; Percentage increase in speed during panic state
+  ;speed-decrease       ; Percentage decrease in speed
+  ;distance-threshold   ; Distance threshold between individuals
+  ;pause-time           ; Pause time after collision
+  ;event-time           ; Time when the event occurs
+  ;effect-radius        ; Effect radius of dead individuals
+  vision-angle   ; Size of individual's vision angle
 ]
 
 patches-own [
-  affected?  ; 标记patch是否受到死亡个体的影响
+  affected?  ; Mark whether the patch is affected by dead individuals
 ]
 
 turtles-own [
-  ; 个体属性
-  vision         ; 视野长度
-  status         ; 个体状态:正常、恐慌、受伤、死亡、安全
-  direction      ; 个体朝向
-  speed          ; 个体当前速度
-  collided?      ; 标记个体是否发生过碰撞
+  ; Individual properties
+  vision         ; Vision length
+  status         ; Individual's state: normal, panic, injured, dead, safe
+  direction      ; Individual's heading
+  speed          ; Individual's current speed
+  collided?      ; Mark whether the individual has collided
 ]
 
 to setup
   clear-all
   reset-ticks
 
-  ; 初始化环境
+  ; Initialize environment
   ask patches [
     set pcolor white
   ]
 
-    ; 初始化affected-patches
+  ; Initialize affected-patches
   ask patches [
     set affected? false
   ]
 
-  ; 创建个体
+
+  ; Create individuals
   create-turtles num-turtles [
     set size 1
     set color blue
@@ -52,19 +53,20 @@ to setup
     set vision-angle 120
     set collided? false
     set affected? false
+    set hidden? false
 
-    ; 确保个体在圆形广场内
+    ; Ensure individuals are within the circular arena
     while [distancexy 0 0 > arena-radius] [
       setxy random-xcor random-ycor
     ]
   ]
 
-  ; 绘制初始状态
+  ; Draw initial state
   draw-arena
   draw-turtles
 end
 
-; 绘制圆形广场
+; Draw circular arena
 to draw-arena
   ask patches [
     if distancexy 0 0 > arena-radius [
@@ -73,7 +75,7 @@ to draw-arena
   ]
 end
 
-; 绘制个体
+; Draw individuals
 to draw-turtles
   ask turtles [
     if status = "normal" [set color blue]
@@ -85,10 +87,10 @@ to draw-turtles
 end
 
 to go
-  ; 停止条件:所有个体都达到"安全"状态或"死亡"状态
+  ; Stop condition: all individuals have reached "safe" state or "dead" state
   if all? turtles [status = "safe" or status = "dead"] [stop]
 
-  ; 事件发生
+  ; Event occurrence
   if ticks = event-time [
     ask one-of turtles with [status != "dead"] [
       set status "dead"
@@ -98,22 +100,27 @@ to go
     ]
   ]
 
-  ; 状态决策阶段
-  ask turtles [
+  ; Hide individuals that have become safe
+  ask turtles with [status = "safe"] [
+    set hidden? true
+  ]
+
+  ; Status decision phase
+  ask turtles with [not hidden?] [
     update-status
   ]
 
-  ; 行为执行阶段
-  ask turtles [
+  ; Behavior execution phase
+  ask turtles with [not hidden?] [
     execute-behavior
   ]
 
-    ; 更新位置
+    ; Update position
   ask turtles [
     check-boundary
   ]
 
-    ; 更新affected-patches
+    ; Update affected-patches
   ask patches [
     set affected? false
   ]
@@ -128,7 +135,7 @@ ask turtles [
 if status != "safe" and not affected? and (status = "panic" or status = "injured") [
 if any? other turtles with [status != "safe"] in-radius 1 [
 set status "injured"
-; 如果个体已经到达边界,直接将状态设置为"safe"
+; If the individual has reached the boundary, even injured, set its status to "safe"
 if distancexy 0 0 >= arena-radius [
 set status "safe"
 ]
@@ -136,18 +143,18 @@ set status "safe"
 ]
 ]
 
-  ; 绘制当前状态
+  ; Draw current state
   draw-turtles
 
   tick
 end
 
-; 更新个体状态
+; Update individual's status
 to update-status
   let visible-turtles other turtles in-cone vision-radius vision-angle
 
   if status = "normal" [
-    ; 正常状态下的决策
+    ; Decision-making in normal state
     ifelse any? patches in-radius vision-radius with [affected?] [
       set status "panic"
     ] [
@@ -157,7 +164,7 @@ to update-status
   ]
 
   if status = "panic" [
-    ; 恐慌状态下的决策
+    ; Decision-making in panic state
     ifelse any? patches in-radius vision-radius with [affected?] [
       set affected? true
     ] [
@@ -169,10 +176,10 @@ to update-status
   ]
 
 if status = "injured" [
-; 受伤状态下的决策
+; Decision-making in injured state
 if ticks mod pause-time = 0 and status != "safe" [
 set status "panic"
-; 如果个体已经到达边界,直接将状态设置为"safe"
+; If the individual has reached the boundary, directly set its status to "safe"
 if distancexy 0 0 >= arena-radius [
 set status "safe"
 ]
@@ -180,10 +187,10 @@ set status "safe"
 ]
 end
 
-; 执行状态对应的行为
+; Execute behavior corresponding to status
 to execute-behavior
   if status = "normal" [
-    ; 正常状态下的行为
+    ; Behavior in normal state
     rt random 90
     lt random 90
     check-boundary
@@ -191,44 +198,34 @@ to execute-behavior
   ]
 
   if status = "panic" [
-    ; 恐慌状态下的行为
+    ; Behavior in panic state
     ifelse affected? [
       away-direction one-of turtles with [status = "dead"]
     ] [
       nearest-exit
     ]
 
-    ; 更新位置
+    ; Update position
     check-boundary
     update-speed
     fd speed
   ]
 
   if status = "injured" [
-    ; 受伤状态下的行为
+    ; Behavior in injured state
     set speed 0
 ]
 
-  ; 如果个体已经到达安全状态,不再执行后续的行为
+  ; If the individual has reached the safe state, do not execute subsequent behaviors
 if status != "safe" and status != "dead" [
-; 更新位置
+; Update position
 check-boundary
 update-speed
 fd speed
 ]
 end
 
-
-; 其他辅助函数保持不变
-
-
-
-
-
-; 其他辅助函数
-
-
-; 计算离个体最近的广场边界的方向
+; Calculate the direction towards the nearest arena boundary
 to nearest-exit
   let center-dx xcor
   let center-dy ycor
@@ -238,10 +235,10 @@ to nearest-exit
   face patch boundary-x boundary-y
 end
 
-; 计算远离指定个体的方向
+; Calculate the direction away from a specified individual
 to away-direction [a-turtle]
   ifelse (xcor = [xcor] of a-turtle) and (ycor = [ycor] of a-turtle) [
-    rt random 360  ; 如果位置完全相同,随机选择一个方向
+    rt random 360  ; If the positions are exactly the same, randomly choose a direction
   ] [
     let delta-x xcor - [xcor] of a-turtle
     let delta-y ycor - [ycor] of a-turtle
@@ -252,7 +249,7 @@ end
 
 
 
-; 根据视野范围内与其他个体的距离调整速度
+; Adjust speed based on the distance from other individuals within the vision range
 to update-speed
   let visible-turtles other turtles in-cone vision-radius vision-angle
   ifelse any? visible-turtles with [distance myself <= distance-threshold] [
@@ -262,6 +259,7 @@ to update-speed
   ]
 end
 
+; check if individual reached the boundary and set status to safe if they are not normal, other wise change their direction back.
 to check-boundary
   if distancexy 0 0 >= arena-radius [
     set heading (heading + 180) mod 360
@@ -273,7 +271,7 @@ to check-boundary
 end
 
 
-; 随机生成一个方向
+; Randomly generate a direction
 to-report random-direction
   report random 360
 end
@@ -307,9 +305,9 @@ ticks
 
 BUTTON
 15
-44
+47
 84
-77
+80
 NIL
 setup
 NIL
@@ -323,13 +321,13 @@ NIL
 1
 
 BUTTON
-124
-45
-187
-78
+123
+46
+186
+79
 NIL
 go
-NIL
+T
 1
 T
 OBSERVER
@@ -340,29 +338,29 @@ NIL
 1
 
 SLIDER
-25
-86
-197
-119
+14
+85
+186
+118
 num-turtles
 num-turtles
 10
 500
-40.0
+100.0
 10
 1
 NIL
 HORIZONTAL
 
 SLIDER
-33
-132
-205
-165
+14
+124
+186
+157
 arena-radius
 arena-radius
 0
-100
+30
 28.0
 1
 1
@@ -370,28 +368,103 @@ NIL
 HORIZONTAL
 
 SLIDER
-37
-178
-209
-211
+14
+163
+186
+196
 vision-radius
 vision-radius
-0
-100
-6.0
+1
+5
+3.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-39
-222
-211
-255
+14
+203
+186
+236
 initial-speed
 initial-speed
+1
+10
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+4
+242
+202
+275
+panic-speed-increase
+panic-speed-increase
 0
+50
+50.0
+10
+1
+NIL
+HORIZONTAL
+
+SLIDER
+10
+282
+182
+315
+speed-decrease
+speed-decrease
+0
+50
+20.0
+10
+1
+NIL
+HORIZONTAL
+
+SLIDER
+4
+452
+188
+485
+distance-threshold
+distance-threshold
+0
+100
+3.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+9
+324
+181
+357
+pause-time
+pause-time
+0
+10
+3.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+9
+365
+181
+398
+event-time
+event-time
+1
 100
 1.0
 1
@@ -400,90 +473,15 @@ NIL
 HORIZONTAL
 
 SLIDER
-29
-269
-227
-302
-panic-speed-increase
-panic-speed-increase
-0
-100
-100.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-25
-312
-197
-345
-speed-decrease
-speed-decrease
-0
-100
-2.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-22
-352
-206
-385
-distance-threshold
-distance-threshold
-0
-100
-8.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-32
-402
-204
-435
-pause-time
-pause-time
-0
-100
-4.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-41
-445
-213
-478
-event-time
-event-time
-0
-100
-1.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-43
-489
-215
-522
+9
+409
+181
+442
 effect-radius
 effect-radius
 0
-100
-18.0
+30
+5.0
 1
 1
 NIL
@@ -510,42 +508,120 @@ PENS
 "Injured" 1.0 0 -955883 true "" "plot count turtles with [status = \"injured\"]"
 "Safe" 1.0 0 -13840069 true "" "plot count turtles with [status = \"safe\"]"
 
+MONITOR
+731
+13
+788
+58
+Normal
+count turtles with [status = \"normal\"]
+1
+1
+11
+
+MONITOR
+800
+13
+858
+58
+Injured
+count turtles with [status = \"injured\"]
+1
+1
+11
+
+MONITOR
+871
+13
+928
+58
+Panic
+count turtles with [status = \"panic\"]
+1
+1
+11
+
+MONITOR
+941
+13
+998
+58
+Safe
+count turtles with [status = \"safe\"]
+1
+1
+11
+
+BUTTON
+61
+10
+144
+43
+go-once
+go
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
 @#$#@#$#@
 ## WHAT IS IT?
 
-(a general understanding of what the model is trying to show or explain)
+The model aims to simulate and understand the behavior and interactions of individuals in an open space during an emergency event. It investigates how factors such as population size, space area, event timing, and individual perception and action capabilities influence the evacuation time. By identifying key factors affecting evacuation efficiency through simulation, the model provides insights for emergency evacuation planning.
 
 ## HOW IT WORKS
 
-(what rules the agents use to create the overall behavior of the model)
+The model consists of individuals (turtles) moving in an open space (patches). Each individual has a state (normal, panic, injured, dead, or safe) and follows specific rules based on their state and environmental factors. The key rules are:
+
+1. At a specified event-time, an individual turns "dead", and surrounding individuals within a certain radius turn "panic".
+2. Normal individuals move randomly, while panicked individuals try to avoid dead individuals and move towards the nearest boundary.
+3. Individuals update their states based on their interactions and perceptions. Normal individuals become panic when seeing panicked or dead individuals, and panicked individuals may get injured in collisions.
+4. The simulation ends when all individuals are either "safe" (evacuated) or "dead".
 
 ## HOW TO USE IT
 
-(how to use the model, including a description of each of the items in the Interface tab)
+1. Set the model parameters in the Interface tab, such as num-turtles, arena-radius, vision-radius, etc.
+2. Click the "Setup" button to initialize the model.
+3. Click the "Go" button to run the simulation.
+4. Observe the model's behavior in the View window and plots.
 
 ## THINGS TO NOTICE
 
-(suggested things for the user to notice while running the model)
+1. The spatial distribution of individuals at different time steps, including clustering, congestion, and the final distribution of safe individuals relative to the location of dead individuals.
+2. The time series of the number of individuals in different states throughout the evacuation process.
+3. The relationship between model parameters and the total evacuation time.
+4. Under specific circumstances the model will reach a loop kept running forever!
 
 ## THINGS TO TRY
-
-(suggested things for the user to try to do (move sliders, switches, etc.) with the model)
+1. Vary the num-turtles, arena-radius, and event-time to see how they affect the evacuation process and total evacuation time.
+2. Change the vision-radius and vision-angle to investigate the impact of individual perception capabilities on the model's behavior.
+3. Adjust the panic-speed-increase and speed-decrease to observe how changes in individual action capabilities influence the evacuation dynamics.
+4. Investigate what kinds of situation this model will into a loop.
 
 ## EXTENDING THE MODEL
 
-(suggested things to add or change in the Code tab to make the model more complicated, detailed, accurate, etc.)
+1. Add more complex individual behaviors, such as group formation or leader-follower dynamics.
+2. Introduce heterogeneity in individual characteristics, such as different walking speeds or panic thresholds.
+3. Incorporate more realistic space layouts, such as obstacles or multiple exits.
+4. Implement multiple event epicenters to simulate more complex emergency scenarios.
 
 ## NETLOGO FEATURES
 
-(interesting or unusual features of NetLogo that the model uses, particularly in the Code tab; or where workarounds were needed for missing features)
+No unusual features used.
 
 ## RELATED MODELS
 
-(models in the NetLogo Models Library and elsewhere which are of related interest)
+No models related.
 
 ## CREDITS AND REFERENCES
 
-(a reference to the model's URL on the web if it has one, as well as any other necessary credits, citations, and links)
+Github link of this model can be found at:
+https://github.com/MengyuanHan1/Agent-Based-Modeling
 @#$#@#$#@
 default
 true
