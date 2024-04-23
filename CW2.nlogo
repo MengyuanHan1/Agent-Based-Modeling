@@ -4,8 +4,8 @@ globals [
   ;arena-radius         ; Radius of the arena
   ;vision-radius        ; Individual's vision radius
   ;initial-speed        ; Initial speed
-  ;panic-speed-increase ; Percentage increase in speed during panic state
-  ;speed-decrease       ; Percentage decrease in speed
+  ;speed-increase       ; Percentage increase in speed during panic state
+  ;speed-decrease       ; Percentage decrease in speed during panic state
   ;distance-threshold   ; Distance threshold between individuals
   ;pause-time           ; Pause time after collision
   ;event-time           ; Time when the event occurs
@@ -131,17 +131,17 @@ to go
     ]
   ]
 
-ask turtles [
-if status != "safe" and not affected? and (status = "panic" or status = "injured") [
-if any? other turtles with [status != "safe"] in-radius 1 [
-set status "injured"
-; If the individual has reached the boundary, even injured, set its status to "safe"
-if distancexy 0 0 >= arena-radius [
-set status "safe"
-]
-]
-]
-]
+  ask turtles [
+    if status != "safe" and not affected? and (status = "panic" or status = "injured") [
+      if any? other turtles with [status != "safe"] in-radius 1 [
+        set status "injured"
+        ; If the individual has reached the boundary, even injured, set its status to "safe"
+        if distancexy 0 0 >= arena-radius [
+          set status "safe"
+        ]
+      ]
+    ]
+  ]
 
   ; Draw current state
   draw-turtles
@@ -175,16 +175,16 @@ to update-status
     ]
   ]
 
-if status = "injured" [
-; Decision-making in injured state
-if ticks mod pause-time = 0 and status != "safe" [
-set status "panic"
-; If the individual has reached the boundary, directly set its status to "safe"
-if distancexy 0 0 >= arena-radius [
-set status "safe"
-]
-]
-]
+  if status = "injured" [
+    ; Decision-making in injured state
+    if ticks mod pause-time = 0 and status != "safe" [
+      set status "panic"
+      ; If the individual has reached the boundary, directly set its status to "safe"
+      if distancexy 0 0 >= arena-radius [
+        set status "safe"
+      ]
+    ]
+  ]
 end
 
 ; Execute behavior corresponding to status
@@ -214,15 +214,15 @@ to execute-behavior
   if status = "injured" [
     ; Behavior in injured state
     set speed 0
-]
+  ]
 
-  ; If the individual has reached the safe state, do not execute subsequent behaviors
-if status != "safe" and status != "dead" [
-; Update position
-check-boundary
-update-speed
-fd speed
-]
+  ; If the individual has reached the safe state or is dead, do not execute subsequent behaviors
+  if status != "safe" and status != "dead" [
+    ; Update position
+    check-boundary
+    update-speed
+    fd speed
+  ]
 end
 
 ; Calculate the direction towards the nearest arena boundary
@@ -236,42 +236,47 @@ to nearest-exit
 end
 
 ; Calculate the direction away from a specified individual
+; This is designed for leaving the dead individual
 to away-direction [a-turtle]
   ifelse (xcor = [xcor] of a-turtle) and (ycor = [ycor] of a-turtle) [
-    rt random 360  ; If the positions are exactly the same, randomly choose a direction
+    rt random 360  ; If the positions are exactly the same, randomly choose a direction to turn right
   ] [
+    ; Calculate the relative position (delta-x, delta-y) to the other turtle
     let delta-x xcor - [xcor] of a-turtle
     let delta-y ycor - [ycor] of a-turtle
-    let adjusted-direction (atan delta-y delta-x + 180) mod 360  ; 计算向相反方向的角度
+    ; Convert the relative position to a direction angle (0-360) and set heading
+    let adjusted-direction (atan delta-y delta-x + 180) mod 360
     set heading adjusted-direction
   ]
 end
 
-
-
 ; Adjust speed based on the distance from other individuals within the vision range
 to update-speed
+  ; Find other turtles within vision cone
   let visible-turtles other turtles in-cone vision-radius vision-angle
   ifelse any? visible-turtles with [distance myself <= distance-threshold] [
+    ; If any visible turtle is within distance threshold, decrease speed
     set speed initial-speed * (1 - speed-decrease / 100)
   ] [
-    set speed initial-speed * (1 + panic-speed-increase / 100)
+    ; If no visible turtle is within distance threshold, increase speed
+    set speed initial-speed * (1 + speed-increase / 100)
   ]
 end
 
-; check if individual reached the boundary and set status to safe if they are not normal, other wise change their direction back.
+; Check if individual reached the boundary
+; If not "normal", set status to "safe" and stop at boundary
+; If "normal", change direction to go back into arena
 to check-boundary
   if distancexy 0 0 >= arena-radius [
-    set heading (heading + 180) mod 360
-    fd (distancexy 0 0 - arena-radius)
+    set heading (heading + 180) mod 360 ; Turn around
+    fd (distancexy 0 0 - arena-radius) ; Move back into arena
     if status != "normal" [
-      set status "safe"
+      set status "safe" ; Mark as safe if not normal
     ]
   ]
 end
 
-
-; Randomly generate a direction
+; Randomly generate a direction angle (0-359)
 to-report random-direction
   report random 360
 end
@@ -398,24 +403,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-4
-242
-202
-275
-panic-speed-increase
-panic-speed-increase
-0
-50
-50.0
-10
-1
-NIL
-HORIZONTAL
-
-SLIDER
-10
+14
 282
-182
+186
 315
 speed-decrease
 speed-decrease
@@ -428,9 +418,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-4
+8
 452
-188
+192
 485
 distance-threshold
 distance-threshold
@@ -443,9 +433,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-9
+13
 324
-181
+185
 357
 pause-time
 pause-time
@@ -458,9 +448,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-9
+13
 365
-181
+185
 398
 event-time
 event-time
@@ -473,9 +463,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-9
+13
 409
-181
+185
 442
 effect-radius
 effect-radius
@@ -568,6 +558,21 @@ NIL
 NIL
 NIL
 1
+
+SLIDER
+14
+243
+186
+276
+speed-increase
+speed-increase
+10
+50
+50.0
+10
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
