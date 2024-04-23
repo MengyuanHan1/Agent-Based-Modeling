@@ -3,4 +3,4 @@
 ## Model Logic
 ***Check if you like***
 
-![alt text](Flow Chart.png)
+![Flow Chart](Flow Chart.png)
